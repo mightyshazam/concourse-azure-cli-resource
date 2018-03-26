@@ -1,8 +1,29 @@
 #!/bin/sh
 
+login_account() {
+    payload=$1
+    tenant=$(jq -r '.source.tenant' < $payload)
+    login_method=$(jq -r '.source.login_method // "user"' < $payload)
+    password=$(jq -r '.source.password' < $payload)
+    username=$(jq -r '.source.username' < $payload)
+    certificate=$(jq -r '.source.certificate' < $payload)
+    echo -n $certificate | base64 -d > cert.pem
+    if [ "$login_method" == "serviceprincipal" ]; then
+      az login --service-principal -u $username -p $password --tenant $tenant
+    elif [ "$login_method" == "certificate" ]; then
+      az login --service-principal -u $username -p cert.pem --tenant $tenant
+    elif [ "$login_method" == "msi" ]; then
+      az login --msi
+    elif [ "$login_method" == "msiuser" ]; then
+      az login --msi -u $username
+    else
+      az login -u $username -p $password
+    fi
+}
+
 set -e
-# exec 3>&1
-# exec 1>&2
+exec 3>&1
+exec 1>&2
 
 # for jq
 PATH=/usr/local/bin:$PATH
@@ -17,9 +38,9 @@ login_account $payload
 mode=$(jq -r '.params.mode // "command"' < $payload)
 command=$(jq -r '.params.command' < $payload)
 script=$(jq -r '.params.script' < $payload)
-if [ "$mode" -eq "command" ]; then
+if [ "$mode" == "command" ]; then
 cat > script.sh <<EOF
-#!/bin/sh
+#!/bin/bash
 $command
 EOF
 else
@@ -27,24 +48,3 @@ else
 fi
 
 bash script.sh
-
-login_account() {
-    payload=$1
-    tenant=$(jq -r '.source.tenant' < $payload)
-    login_method=$(jq -r '.source.login_method // "user"' < $payload)
-    password=$(jq -r '.source.password' < $payload)
-    username=$(jq -r '.source.username' < $payload)
-    certificate=$(jq -r '.source.certificate' < $payload)
-    echo -n $certificate | base64 -d > cert.pem
-    if [ "$login_method" -eq "serviceprincipal" ]; then
-      az login --service-principal -u $username -p $password --tenant $tenant
-    elif [ "$login_method" -eq "certificate" ]
-      az login --service-principal -u $username -p cert.pem --tenant $tenant
-    elif [ "$login_method" -eq "msi" ]
-      az login --msi
-    elif [ "$login_method" -eq "msiuser" ]
-      az login --msi -u $username
-    else
-      az login -u $username -p $password
-    fi
-}
